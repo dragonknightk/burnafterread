@@ -11,7 +11,7 @@ Fork of [casablanque-code/burnafterread](https://github.com/casablanque-code/bur
 - **Single-account login** (`worker/lib/auth.ts`):
   - Username and PBKDF2-SHA256 password hash are Worker secrets (`AUTH_USERNAME`, `AUTH_PASSWORD_HASH`), never in the repo.
     Generate the hash with `node scripts/hash-password.mjs` (reads the password from stdin).
-  - Session cookie `moho_session` = expiry + HMAC-SHA256 (secret `SESSION_SECRET`), `HttpOnly; Secure; SameSite=Strict; Path=/moho`, 7 days.
+  - Session cookie `moho_session` = expiry + HMAC-SHA256 (secret `SESSION_SECRET`), `HttpOnly; Secure; SameSite=Strict; Path=/moho`, 30 days.
   - Login required (checked in the Worker): create page `/moho/`, `POST /moho/api/drops`, `DELETE /moho/api/drops/:id`.
   - Public: `/moho/login`, `/moho/d/:id` (share links), `GET /moho/api/drops/:id`, `/moho/security`, static files.
 - **Brute-force protection** (`worker/durable/RateLimiter.ts`): 5 failed logins per IP (IPv6 per /64) lock that IP for 15 min;
@@ -31,3 +31,6 @@ node scripts/hash-password.mjs | npx wrangler secret put AUTH_PASSWORD_HASH
 npx wrangler secret put SESSION_SECRET   # long random string; changing it logs everyone out
 npx wrangler deploy
 ```
+
+Login password field is `type="text"` masked with `-webkit-text-security: disc` (falls back to `type="password"` where unsupported),
+so phones do not switch to the OS secure keyboard and pasting works.

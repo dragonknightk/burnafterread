@@ -672,3 +672,30 @@
   background: var(--accent, #f60) !important;
   color: #fff !important;
 }
+.maskedInput {
+  -webkit-text-security: disc;
+}
+.pwRow {
+  position: relative;
+}
+.pwRow .input {
+  padding-right: 48px;
+}
+.pwToggle {
+  position: absolute !important;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 6px 8px !important;
+  width: auto !important;
+  font-size: 16px !important;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.pwToggle:hover {
+  opacity: 1;
+}

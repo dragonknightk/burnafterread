@@ -4,12 +4,17 @@ import { useState, type FormEvent } from "react";
 import "./App.css";
 import { BASE, useI18n } from "./i18n";
 
+// Browsers without -webkit-text-security fall back to a normal password field
+const CAN_MASK =
+  typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("-webkit-text-security", "disc");
+
 export default function LoginPage() {
   const { tr } = useI18n();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showPw, setShowPw] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -76,14 +81,30 @@ export default function LoginPage() {
           <label className="fieldLabel" htmlFor="password" style={{ marginTop: 14 }}>
             {tr("密码", "Password")}
           </label>
-          <input
-            id="password"
-            className="input"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          {/* type=text + CSS masking: avoids the OS "secure keyboard" on phones that blocks pasting */}
+          <div className="pwRow">
+            <input
+              id="password"
+              className={showPw ? "input" : "input maskedInput"}
+              type={showPw || CAN_MASK ? "text" : "password"}
+              inputMode="text"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="pwToggle"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? tr("隐藏密码", "Hide password") : tr("显示密码", "Show password")}
+              title={showPw ? tr("隐藏密码", "Hide password") : tr("显示密码", "Show password")}
+            >
+              {showPw ? "🙈" : "👁"}
+            </button>
+          </div>
 
           <div className="actions">
             <button type="submit" disabled={busy}>

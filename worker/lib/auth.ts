@@ -8,7 +8,7 @@
 import { base64Url } from "./ids";
 
 export const SESSION_COOKIE = "moho_session";
-export const SESSION_TTL_SECONDS = 7 * 24 * 3600;
+export const SESSION_TTL_SECONDS = 30 * 24 * 3600;
 
 const enc = new TextEncoder();
 
