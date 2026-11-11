@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import "./App.css";
+import { BASE, errorText, useI18n } from "./i18n";
 import {
   decodeKeyFromUrl,
   decryptBytes,
@@ -35,12 +36,16 @@ interface FilePayloadV1 {
   data: string;
 }
 
+function stripBase(pathname: string): string {
+  return pathname.startsWith(BASE) ? pathname.slice(BASE.length) || "/" : pathname;
+}
+
 function getModeFromLocation(pathname: string): Mode {
-  return pathname.startsWith("/d/") ? "read" : "create";
+  return stripBase(pathname).startsWith("/d/") ? "read" : "create";
 }
 
 function getDropIdFromPath(pathname: string): string | null {
-  const parts = pathname.split("/").filter(Boolean);
+  const parts = stripBase(pathname).split("/").filter(Boolean);
   if (parts.length === 2 && parts[0] === "d") {
     return parts[1];
   }
@@ -56,6 +61,7 @@ function getKeyFromHash(hash: string): string | null {
 }
 
 function App() {
+  const { tr } = useI18n();
   const mode = useMemo(() => getModeFromLocation(window.location.pathname), []);
   const dropId = useMemo(() => getDropIdFromPath(window.location.pathname), []);
   const fragmentKey = useMemo(() => getKeyFromHash(window.location.hash), []);
@@ -81,22 +87,26 @@ function App() {
     setRevokeError("");
 
     try {
-      const response = await fetch(`/api/drops/${id}`, {
+      const response = await fetch(`${BASE}/api/drops/${id}`, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ delete_token: deleteToken }),
       });
 
+      if (response.status === 401) {
+        window.location.href = `${BASE}/login`;
+        return;
+      }
       if (!response.ok) {
         const maybeError = await response.json().catch(() => null);
-        throw new Error(maybeError?.error || "Failed to revoke");
+        throw new Error(errorText(maybeError?.error, tr));
       }
 
       setRevoked(true);
       setCreatedLink("");
       setDeleteToken("");
     } catch (err) {
-      setRevokeError(err instanceof Error ? err.message : "Unknown error");
+      setRevokeError(err instanceof Error ? err.message : tr("未知错误", "Unknown error"));
     } finally {
       setRevoking(false);
     }
@@ -116,7 +126,7 @@ function App() {
     setDeleteToken("");
 
     if (!file && !text.trim()) {
-      setCreateError("Enter some text or select a file.");
+      setCreateError(tr("请输入文字或选择一个文件", "Enter some text or select a file"));
       return;
     }
 
@@ -159,7 +169,7 @@ function App() {
         sizeBytes = new TextEncoder().encode(text).length;
       }
 
-      const response = await fetch("/api/drops", {
+      const response = await fetch(`${BASE}/api/drops`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -174,14 +184,18 @@ function App() {
         }),
       });
 
+      if (response.status === 401) {
+        window.location.href = `${BASE}/login`;
+        return;
+      }
       if (!response.ok) {
         const maybeError = await response.json().catch(() => null);
-        throw new Error(maybeError?.message || maybeError?.error || "Failed to create drop");
+        throw new Error(errorText(maybeError?.error, tr));
       }
 
       const data = (await response.json()) as CreateResponse;
       const encodedKey = encodeKeyForUrl(rawKey);
-      const link = `${window.location.origin}/d/${data.id}#k=${encodedKey}`;
+      const link = `${window.location.origin}${BASE}/d/${data.id}#k=${encodedKey}`;
 
       setCreatedLink(link);
       setDeleteToken(data.delete_token);
@@ -192,9 +206,17 @@ function App() {
         // ignore clipboard errors
       }
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "Unknown error");
+      setCreateError(error instanceof Error ? error.message : tr("未知错误", "Unknown error"));
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch(`${BASE}/api/logout`, { method: "POST" });
+    } finally {
+      window.location.href = `${BASE}/login`;
     }
   }
 
@@ -204,24 +226,24 @@ function App() {
     setReadFileInfo("");
 
     if (!dropId) {
-      setReadError("Missing drop id.");
+      setReadError(tr("链接缺少 ID", "Missing drop id"));
       return;
     }
 
     if (!fragmentKey) {
-      setReadError("Missing key in URL fragment.");
+      setReadError(tr("链接缺少解密密钥 (#k=...)", "Missing key in URL fragment"));
       return;
     }
 
     if (!/^[A-Za-z0-9_-]{43}$/.test(fragmentKey)) {
-      setReadError("Invalid key format in URL.");
+      setReadError(tr("链接里的密钥格式不对", "Invalid key format in URL"));
       return;
     }
 
     try {
       setReading(true);
 
-      const response = await fetch(`/api/drops/${dropId}`, {
+      const response = await fetch(`${BASE}/api/drops/${dropId}`, {
         method: "GET",
         headers: {
           "cache-control": "no-store",
@@ -230,7 +252,7 @@ function App() {
 
       if (!response.ok) {
         const maybeError = await response.json().catch(() => null);
-        throw new Error(maybeError?.message || maybeError?.error || "Failed to read drop");
+        throw new Error(errorText(maybeError?.error, tr));
       }
 
       const data = (await response.json()) as ReadResponse;
@@ -255,13 +277,13 @@ function App() {
         a.remove();
         URL.revokeObjectURL(fileUrl);
 
-        setReadFileInfo(`Downloaded: ${payload.filename}`);
+        setReadFileInfo(`${tr("已下载", "Downloaded")}: ${payload.filename}`);
       } else {
         const plaintext = await decryptText(payload as EncryptedPayloadV1, rawKey);
         setReadText(plaintext);
       }
     } catch (error) {
-      setReadError(error instanceof Error ? error.message : "Unknown error");
+      setReadError(error instanceof Error && error.name !== "OperationError" ? error.message : tr("解密失败, 密钥不对或内容被篡改", "Decryption failed, wrong key or tampered data"));
     } finally {
       setReading(false);
     }
@@ -272,25 +294,25 @@ function App() {
       <main className="page">
         <section className="card">
           <div className="eyebrow">BurnAfterRead</div>
-          <h1>Read secure drop</h1>
+          <h1>{tr("查看加密消息", "Read secure drop")}</h1>
           <p className="muted">
-            The server never receives the decryption key. It stays in the URL fragment.
+            {tr("解密密钥只在链接 # 后面, 服务器永远拿不到. 内容打开一次后即销毁", "The server never receives the decryption key. It stays in the URL fragment")}
           </p>
 
           <div className="meta">
             <div>
-              <span className="metaLabel">Drop ID</span>
-              <code>{dropId ?? "missing"}</code>
+              <span className="metaLabel">{tr("消息 ID", "Drop ID")}</span>
+              <code>{dropId ?? tr("缺失", "missing")}</code>
             </div>
             <div>
-              <span className="metaLabel">Key in URL</span>
-              <code>{fragmentKey ? "present" : "missing"}</code>
+              <span className="metaLabel">{tr("链接内密钥", "Key in URL")}</span>
+              <code>{fragmentKey ? tr("有", "present") : tr("缺失", "missing")}</code>
             </div>
           </div>
 
           <div className="actions">
             <button onClick={handleRead} disabled={reading}>
-              {reading ? "Decrypting..." : "Open and decrypt"}
+              {reading ? tr("解密中...", "Decrypting...") : tr("打开并解密", "Open and decrypt")}
             </button>
           </div>
 
@@ -298,14 +320,14 @@ function App() {
 
           {readText ? (
             <div className="resultBlock">
-              <div className="resultLabel">Decrypted message</div>
+              <div className="resultLabel">{tr("解密后的内容", "Decrypted message")}</div>
               <pre className="plaintextBox">{readText}</pre>
             </div>
           ) : null}
 
           {readFileInfo ? (
             <div className="resultBlock">
-              <div className="resultLabel">File</div>
+              <div className="resultLabel">{tr("文件", "File")}</div>
               <div>{readFileInfo}</div>
             </div>
           ) : null}
@@ -317,28 +339,31 @@ function App() {
   return (
     <main className="page">
       <section className="card">
-        <div className="eyebrow">BurnAfterRead</div>
-        <h1>Create secure drop</h1>
+        <div className="eyebrowRow">
+          <div className="eyebrow">BurnAfterRead</div>
+          <button type="button" className="linkButton" onClick={handleLogout}>{tr("退出登录", "Log out")}</button>
+        </div>
+        <h1>{tr("创建阅后即焚", "Create secure drop")}</h1>
         <p className="muted">
-          Text and files are encrypted in your browser before upload. We can't read them.{' '}
-          <a href='/security' style={{ color: 'var(--accent)', textDecoration: 'none' }}>How it works &rarr;</a>
+          {tr("文字和文件在你的浏览器里加密后才上传, 服务器看不到内容", "Text and files are encrypted in your browser before upload. We can't read them")}{' '}
+          <a href={`${BASE}/security`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{tr("原理说明", "How it works")} &rarr;</a>
         </p>
 
         <label className="fieldLabel" htmlFor="secretText">
-          Secret text
+          {tr("秘密文字", "Secret text")}
         </label>
         <textarea
           id="secretText"
           className="textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Paste a password, config, token, note, or anything sensitive..."
+          placeholder={tr("粘贴密码, 配置, 笔记或任何敏感内容...", "Paste a password, config, token, note, or anything sensitive...")}
           rows={6}
           disabled={!!file}
         />
 
         <label className="fieldLabel" style={{ marginTop: 18 }}>
-          File <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional, max 5 MB)</span>
+          {tr("文件", "File")} <span style={{ color: "var(--muted)", fontWeight: 400 }}>{tr("(可选, 最大 5 MB)", "(optional, max 5 MB)")}</span>
         </label>
         <label
           className={`dropZone${file ? " dropZone--filled" : ""}${text.trim() ? " dropZone--disabled" : ""}`}
@@ -350,7 +375,7 @@ function App() {
             if (text.trim()) return;
             const dropped = e.dataTransfer.files?.[0];
             if (!dropped) return;
-            if (dropped.size > 5 * 1024 * 1024) { alert("Max file size is 5 MB"); return; }
+            if (dropped.size > 5 * 1024 * 1024) { alert(tr("文件最大 5 MB", "Max file size is 5 MB")); return; }
             setFile(dropped);
             setText("");
           }}
@@ -364,7 +389,7 @@ function App() {
               const selected = e.target.files?.[0] || null;
               if (!selected) { setFile(null); return; }
               if (selected.size > 5 * 1024 * 1024) {
-                alert("Max file size is 5 MB");
+                alert(tr("文件最大 5 MB", "Max file size is 5 MB"));
                 e.currentTarget.value = "";
                 setFile(null);
                 return;
@@ -384,14 +409,14 @@ function App() {
                 type="button"
                 className="dropZone__remove"
                 onClick={(e) => { e.preventDefault(); setFile(null); }}
-                title="Remove file"
+                title={tr("移除文件", "Remove file")}
               >✕</button>
             </div>
           ) : (
             <div className="dropZone__empty">
               <span className="dropZone__icon">⬆</span>
               <span className="dropZone__hint">
-                {text.trim() ? "Clear text to attach a file" : "Drop file here or click to browse"}
+                {text.trim() ? tr("清空文字后才能附加文件", "Clear text to attach a file") : tr("拖入文件或点击选择", "Drop file here or click to browse")}
               </span>
             </div>
           )}
@@ -400,7 +425,7 @@ function App() {
         <div className="grid">
           <div className="field">
             <label className="fieldLabel" htmlFor="ttl">
-              TTL
+              {tr("有效期", "TTL")}
             </label>
             <select
               id="ttl"
@@ -408,15 +433,15 @@ function App() {
               value={ttlSeconds}
               onChange={(e) => setTtlSeconds(Number(e.target.value))}
             >
-              <option value={3600}>1 hour</option>
-              <option value={86400}>24 hours</option>
-              <option value={604800}>7 days</option>
+              <option value={3600}>{tr("1 小时", "1 hour")}</option>
+              <option value={86400}>{tr("24 小时", "24 hours")}</option>
+              <option value={604800}>{tr("7 天", "7 days")}</option>
             </select>
           </div>
 
           <div className="field">
             <label className="fieldLabel" htmlFor="views">
-              Views
+              {tr("可查看次数", "Views")}
             </label>
             <select
               id="views"
@@ -437,12 +462,12 @@ function App() {
             checked={paranoid}
             onChange={(e) => setParanoid(e.target.checked)}
           />
-          <span>Paranoid mode</span>
+          <span>{tr("偏执模式 (首次打开即销毁, 不提示是否存在)", "Paranoid mode")}</span>
         </label>
 
         <div className="actions">
           <button onClick={handleCreate} disabled={creating}>
-            {creating ? "Encrypting..." : "Create secure link"}
+            {creating ? tr("加密中...", "Encrypting...") : tr("生成加密链接", "Create secure link")}
           </button>
         </div>
 
@@ -450,7 +475,7 @@ function App() {
 
         {createdLink ? (
           <div className="resultBlock">
-            <div className="resultLabel">Secure link</div>
+            <div className="resultLabel">{tr("加密链接", "Secure link")}</div>
             <textarea className="linkBox" readOnly value={createdLink} rows={3} />
 
             <div className="inlineButtons">
@@ -465,7 +490,7 @@ function App() {
                   }
                 }}
               >
-                Copy link
+                {tr("复制链接", "Copy link")}
               </button>
 
               <button
@@ -475,11 +500,11 @@ function App() {
                   window.open(createdLink, "_blank", "noopener,noreferrer");
                 }}
               >
-                Open link
+                {tr("打开链接", "Open link")}
               </button>
             </div>
 
-            <div className="resultLabel">Delete token</div>
+            <div className="resultLabel">{tr("撤回凭证", "Delete token")}</div>
             <textarea className="linkBox" readOnly value={deleteToken} rows={2} />
 
             <div className="inlineButtons" style={{ marginTop: 12 }}>
@@ -490,7 +515,7 @@ function App() {
                 disabled={revoking}
                 style={{ color: "var(--color-danger, #c0392b)" }}
               >
-                {revoking ? "Revoking..." : "Revoke drop"}
+                {revoking ? tr("撤回中...", "Revoking...") : tr("撤回消息", "Revoke drop")}
               </button>
             </div>
 
@@ -500,8 +525,8 @@ function App() {
 
         {revoked ? (
           <div className="resultBlock">
-            <div className="resultLabel">Drop revoked</div>
-            <div className="muted">The drop has been deleted and the link is no longer valid.</div>
+            <div className="resultLabel">{tr("已撤回", "Drop revoked")}</div>
+            <div className="muted">{tr("内容已删除, 链接已失效", "The drop has been deleted and the link is no longer valid")}</div>
           </div>
         ) : null}
       </section>

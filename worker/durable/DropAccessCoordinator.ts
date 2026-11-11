@@ -1,9 +1,15 @@
 // worker/durable/DropAccessCoordinator.ts
 
+//
+// Ciphertext is stored in this Durable Object's own storage (chunked), not in
+// R2, so the deployment needs no R2 bucket. One DO instance per drop id.
+
 interface Env {
   DB: D1Database;
-  BLOBS: R2Bucket;
 }
+
+// SQLite-backed DO storage allows values up to 2 MB; stay well below
+const CHUNK_CHARS = 1_000_000;
 
 interface DropRow {
   id: string;
@@ -26,6 +32,30 @@ export class DropAccessCoordinator {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/store") {
+      const body = (await request.json()) as { ciphertext: string };
+      const chunks: Record<string, string> = {};
+      let n = 0;
+      for (let i = 0; i < body.ciphertext.length; i += CHUNK_CHARS) {
+        chunks[`c${n}`] = body.ciphertext.slice(i, i + CHUNK_CHARS);
+        n++;
+      }
+      chunks.n = String(n);
+      await this.state.storage.put(chunks);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (url.pathname === "/purge") {
+      const body = (await request.json()) as { id: string };
+      await this.env.DB.prepare(`DELETE FROM drops WHERE id = ?`).bind(body.id).run();
+      await this.state.storage.deleteAll();
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     if (url.pathname === "/consume") {
       const body = (await request.json()) as { id: string };
@@ -72,16 +102,14 @@ export class DropAccessCoordinator {
           .bind(newViews, id)
           .run();
 
-        const obj = await this.env.BLOBS.get(drop.r2_key);
+        const ciphertext = await this.readBlob();
 
-        if (!obj) {
+        if (ciphertext === null) {
           return new Response(JSON.stringify({ error: "missing_blob" }), {
             status: 500,
             headers: { "content-type": "application/json" },
           });
         }
-
-        const ciphertext = await obj.text();
 
         if (drop.paranoid) {
           await this.deleteDrop(drop);
@@ -163,11 +191,26 @@ export class DropAccessCoordinator {
     return diff === 0;
   }
 
+  private async readBlob(): Promise<string | null> {
+    const nStr = await this.state.storage.get<string>("n");
+    if (!nStr) return null;
+    const n = Number(nStr);
+    const keys = Array.from({ length: n }, (_, i) => `c${i}`);
+    const map = await this.state.storage.get<string>(keys);
+    let out = "";
+    for (const k of keys) {
+      const part = map.get(k);
+      if (part === undefined) return null;
+      out += part;
+    }
+    return out;
+  }
+
   async deleteDrop(drop: DropRow): Promise<void> {
     await this.env.DB.prepare(`DELETE FROM drops WHERE id = ?`)
       .bind(drop.id)
       .run();
 
-    await this.env.BLOBS.delete(drop.r2_key);
+    await this.state.storage.deleteAll();
   }
 }

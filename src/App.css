@@ -607,3 +607,68 @@
 	  grid-template-columns: 1fr;
 	}
   }
+/* ── moho additions: login, language toggle ───────────────────────────── */
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.loginCard {
+  max-width: 420px;
+}
+.eyebrowRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.linkButton {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  color: var(--muted) !important;
+  font-size: 13px;
+  cursor: pointer;
+  width: auto !important;
+}
+.linkButton:hover {
+  color: var(--text) !important;
+}
+.langToggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 50;
+  display: flex;
+  border: 1px solid var(--border, #333);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel, #111);
+}
+.langBtn {
+  background: transparent !important;
+  color: var(--muted, #999) !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  min-width: 0 !important;
+  width: auto !important;
+  margin: 0 !important;
+  cursor: pointer;
+}
+.langBtn--active {
+  background: var(--accent, #f60) !important;
+  color: #fff !important;
+}

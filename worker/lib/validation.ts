@@ -18,6 +18,7 @@ export function validateCreate(body: unknown): CreateDropRequest | null {
   if (typeof b.size_bytes !== "number") return null;
 
   if (b.size_bytes > 5 * 1024 * 1024) return null;
+  if (b.ciphertext.length > 8 * 1024 * 1024) return null;
   if (b.ttl_seconds < 60 || b.ttl_seconds > 7 * 24 * 3600) return null;
   if (!Number.isInteger(b.views) || b.views < 1 || b.views > 10) return null;
 

@@ -135,14 +135,17 @@ program
       // extract drop id from path
       const baseUrl = rawUrl.slice(0, hashIndex);
       const pathParts = new URL(baseUrl).pathname.split("/").filter(Boolean);
-      if (pathParts.length < 2 || pathParts[0] !== "d") {
-        console.error("❌ URL path format invalid. Expected /d/<id>");
+      // supports deployments under a path prefix, e.g. /moho/d/<id>
+      const dIndex = pathParts.lastIndexOf("d");
+      if (dIndex === -1 || dIndex !== pathParts.length - 2) {
+        console.error("❌ URL path format invalid. Expected [/prefix]/d/<id>");
         process.exit(1);
       }
-      const id = pathParts[1];
+      const id = pathParts[dIndex + 1];
+      const prefix = pathParts.slice(0, dIndex).map((p) => "/" + p).join("");
 
       // fetch ciphertext from API
-      const apiBase = new URL(baseUrl).origin;
+      const apiBase = new URL(baseUrl).origin + prefix;
       const res = await fetch(`${apiBase}/api/drops/${id}`, {
         method: "GET",
         headers: { "cache-control": "no-store" }
